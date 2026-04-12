@@ -245,29 +245,25 @@ fn render_pane_row(
         }
     }
 
-    let mut spans = vec![
+    let branch_with_flags = if indicators.is_empty() {
+        label.clone()
+    } else {
+        format!("{label} {indicators}")
+    };
+
+    let spans = vec![
         marker,
         Span::raw(indent),
         Span::styled(
             format!("{} ", p.state.glyph()),
             Style::default().fg(p.state.color()),
         ),
-        Span::styled(rpad(&label, 20), Style::default().fg(Color::Cyan)),
+        Span::styled(rpad(&branch_with_flags, 24), Style::default().fg(Color::Cyan)),
+        Span::styled(
+            p.target.clone(),
+            Style::default().fg(Color::DarkGray),
+        ),
     ];
-
-    if !indicators.is_empty() {
-        spans.push(Span::styled(
-            rpad(&indicators, 6),
-            Style::default().fg(Color::Yellow),
-        ));
-    } else {
-        spans.push(Span::raw(rpad("", 6)));
-    }
-
-    spans.push(Span::styled(
-        p.target.clone(),
-        Style::default().fg(Color::DarkGray),
-    ));
 
     ListItem::new(Line::from(spans))
 }

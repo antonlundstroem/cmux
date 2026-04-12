@@ -55,6 +55,8 @@ impl App {
         let live = LiveView::new(&groups);
         let mut sessions = SessionsView::new();
         sessions.ensure_loaded();
+        let mut resume = ResumeView::new();
+        resume.ensure_loaded();
         let mut app = Self {
             groups,
             current_pane_id,
@@ -63,7 +65,7 @@ impl App {
             filter: Filter::new(),
             live,
             sessions,
-            resume: ResumeView::new(),
+            resume,
             preview: Preview::new(),
             exit: None,
         };
