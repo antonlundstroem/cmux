@@ -70,6 +70,22 @@ impl App {
         app
     }
 
+    pub fn set_initial_tab(&mut self, tab: &str) {
+        match tab {
+            "sessions" => {
+                self.sessions.ensure_loaded();
+                self.sessions.rebuild(&self.query, &mut self.filter);
+                self.tab = Tab::Sessions;
+            }
+            "resume" => {
+                self.resume.ensure_loaded();
+                self.resume.rebuild(&self.query, &mut self.filter);
+                self.tab = Tab::Resume;
+            }
+            _ => {}
+        }
+    }
+
     pub fn run<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> std::io::Result<()> {
         const TICK: Duration = Duration::from_millis(500);
         loop {
