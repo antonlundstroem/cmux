@@ -49,6 +49,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
+name = "cmux"
+version = "0.1.0"
+dependencies = [
+ "ansi-to-tui",
+ "crossterm",
+ "nucleo-matcher",
+ "ratatui",
+ "rayon",
+ "serde_json",
+]
+
+[[package]]
 name = "compact_str"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -110,18 +122,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "acdd7c62a3665c7f6830a51635d9ac9b23ed385797f70a83bb8bafe9c572ab2b"
 dependencies = [
  "winapi",
-]
-
-[[package]]
-name = "ctui"
-version = "0.1.0"
-dependencies = [
- "ansi-to-tui",
- "crossterm",
- "nucleo-matcher",
- "ratatui",
- "rayon",
- "serde_json",
 ]
 
 [[package]]

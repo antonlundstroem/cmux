@@ -119,7 +119,13 @@ impl LiveView {
         self.ensure_valid_selection();
     }
 
-    pub fn render(&mut self, f: &mut Frame, area: Rect, groups: &[Group]) {
+    pub fn render(
+        &mut self,
+        f: &mut Frame,
+        area: Rect,
+        groups: &[Group],
+        current_pane_id: Option<&str>,
+    ) {
         let items: Vec<ListItem> = self
             .rows
             .iter()
@@ -156,7 +162,11 @@ impl LiveView {
                     else {
                         return ListItem::new("?");
                     };
-                    render_pane_row(p, groups[*group_idx].repo_name.is_some())
+                    render_pane_row(
+                        p,
+                        groups[*group_idx].repo_name.is_some(),
+                        current_pane_id,
+                    )
                 }
             })
             .collect();
@@ -198,8 +208,18 @@ fn build_haystacks(groups: &[Group]) -> (Vec<String>, Vec<(usize, usize)>) {
     (haystacks, coords)
 }
 
-fn render_pane_row(p: &LivePane, in_group: bool) -> ListItem<'static> {
-    let indent = if in_group { "    " } else { "  " };
+fn render_pane_row(
+    p: &LivePane,
+    in_group: bool,
+    current_pane_id: Option<&str>,
+) -> ListItem<'static> {
+    let marker = if current_pane_id == Some(p.pane_id.as_str()) {
+        Span::styled("▸", Style::default().fg(Color::Magenta))
+    } else {
+        Span::raw(" ")
+    };
+
+    let indent = if in_group { "   " } else { " " };
 
     let (worktree, branch) = match &p.git {
         Some(gi) => {
@@ -213,19 +233,49 @@ fn render_pane_row(p: &LivePane, in_group: bool) -> ListItem<'static> {
         None => (util::shorten_home(&p.cwd), String::new()),
     };
 
-    ListItem::new(Line::from(vec![
+    // Git indicators: * dirty, ⚘ worktree, ↑N↓M ahead/behind
+    let mut indicators = String::new();
+    if let Some(gi) = &p.git {
+        if gi.dirty {
+            indicators.push('*');
+        }
+        if gi.is_worktree {
+            indicators.push('⚘');
+        }
+        if gi.ahead > 0 {
+            indicators.push_str(&format!("↑{}", gi.ahead));
+        }
+        if gi.behind > 0 {
+            indicators.push_str(&format!("↓{}", gi.behind));
+        }
+    }
+
+    let mut spans = vec![
+        marker,
         Span::raw(indent),
         Span::styled(
             format!("{} ", p.state.glyph()),
             Style::default().fg(p.state.color()),
         ),
         Span::raw(rpad(&worktree, 24)),
-        Span::styled(rpad(&branch, 20), Style::default().fg(Color::Cyan)),
-        Span::styled(
-            rpad(&p.target, 16),
-            Style::default().fg(Color::DarkGray),
-        ),
-    ]))
+        Span::styled(rpad(&branch, 16), Style::default().fg(Color::Cyan)),
+    ];
+
+    if !indicators.is_empty() {
+        spans.push(Span::styled(
+            rpad(&indicators, 8),
+            Style::default().fg(Color::Yellow),
+        ));
+    } else {
+        spans.push(Span::raw(rpad("", 8)));
+    }
+
+    spans.push(Span::styled(
+        rpad(&p.target, 16),
+        Style::default().fg(Color::DarkGray),
+    ));
+
+    ListItem::new(Line::from(spans))
 }
 
 fn rpad(s: &str, width: usize) -> String {

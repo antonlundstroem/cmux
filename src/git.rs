@@ -7,20 +7,31 @@ pub struct GitInfo {
     pub common_dir: PathBuf,
     /// The current worktree's top-level directory (the cwd of that worktree).
     pub worktree_path: PathBuf,
-    /// Current branch, or "(detached)" for detached HEAD.
+    /// Current branch, or "(detached)" / "?" for detached/unknown HEAD.
     pub branch: String,
-    /// Human-readable repo name — basename of the main worktree, derived from `common_dir`'s parent.
+    /// Human-readable repo name — basename of the main worktree.
     pub repo_name: String,
+    /// Whether this pane is in a linked worktree (not the main checkout).
+    pub is_worktree: bool,
+    /// Uncommitted changes present.
+    pub dirty: bool,
+    /// Commits ahead of upstream.
+    pub ahead: u32,
+    /// Commits behind upstream.
+    pub behind: u32,
 }
 
-/// Probe git info for a given cwd. Returns None when cwd isn't in a git repo
-/// or when git itself fails.
 pub fn probe(cwd: &Path) -> Option<GitInfo> {
     // Grouping info — must succeed for us to treat this as a git repo.
     let out = Command::new("git")
         .arg("-C")
         .arg(cwd)
-        .args(["rev-parse", "--git-common-dir", "--show-toplevel"])
+        .args([
+            "rev-parse",
+            "--git-dir",
+            "--git-common-dir",
+            "--show-toplevel",
+        ])
         .output()
         .ok()?;
     if !out.status.success() {
@@ -28,11 +39,11 @@ pub fn probe(cwd: &Path) -> Option<GitInfo> {
     }
     let text = String::from_utf8_lossy(&out.stdout);
     let mut lines = text.lines();
+    let git_dir_raw = lines.next()?.to_string();
     let common_raw = lines.next()?.to_string();
     let toplevel = lines.next()?.to_string();
 
-    // Branch name — best-effort. Fails on bare repos with no commits, orphan
-    // branches, or ambiguous HEAD. That's fine; we just show "?".
+    // Branch name — best-effort.
     let branch = Command::new("git")
         .arg("-C")
         .arg(cwd)
@@ -43,37 +54,38 @@ pub fn probe(cwd: &Path) -> Option<GitInfo> {
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
         .unwrap_or_default();
 
-    // --git-common-dir may return a relative path (e.g. ".git") — resolve it against cwd.
-    let common_dir_rel = PathBuf::from(&common_raw);
-    let common_dir = if common_dir_rel.is_absolute() {
-        common_dir_rel
-    } else {
-        cwd.join(common_dir_rel)
+    // Resolve relative paths against cwd.
+    let resolve = |raw: &str| -> PathBuf {
+        let p = PathBuf::from(raw);
+        let abs = if p.is_absolute() { p } else { cwd.join(p) };
+        std::fs::canonicalize(&abs).unwrap_or(abs)
     };
-    // Canonicalize to collapse `..` and symlinks so two worktrees of the same repo
-    // produce identical grouping keys.
-    let common_dir = std::fs::canonicalize(&common_dir).unwrap_or(common_dir);
+    let git_dir = resolve(&git_dir_raw);
+    let common_dir = resolve(&common_raw);
 
-    // For a normal repo, common_dir ends in `.git` (e.g. `/repo/.git`), so
-    // the repo name is the parent directory's basename.
-    // For a bare repo, common_dir IS the repo (e.g. `/work/infrastructure.git`),
-    // so the repo name is its own basename with `.git` stripped.
+    // Worktree = git-dir differs from common-dir (linked worktrees have their
+    // own .git/worktrees/<name> directory).
+    let is_worktree = git_dir != common_dir;
+
     let repo_name = {
-        let cd_name = common_dir.file_name().map(|s| s.to_string_lossy().into_owned());
+        let cd_name = common_dir
+            .file_name()
+            .map(|s| s.to_string_lossy().into_owned());
         if cd_name.as_deref() == Some(".git") {
-            // Normal repo: /repo/.git → parent basename
             common_dir
                 .parent()
                 .and_then(|p| p.file_name())
                 .map(|s| s.to_string_lossy().to_string())
                 .unwrap_or_else(|| "repo".to_string())
         } else {
-            // Bare repo: /work/infrastructure.git → "infrastructure"
             cd_name
                 .map(|s| s.trim_end_matches(".git").to_string())
                 .unwrap_or_else(|| "repo".to_string())
         }
     };
+
+    // Git status for dirty/ahead/behind — best-effort.
+    let (dirty, ahead, behind) = probe_status(cwd);
 
     Some(GitInfo {
         common_dir,
@@ -84,5 +96,43 @@ pub fn probe(cwd: &Path) -> Option<GitInfo> {
             _ => branch,
         },
         repo_name,
+        is_worktree,
+        dirty,
+        ahead,
+        behind,
     })
+}
+
+fn probe_status(cwd: &Path) -> (bool, u32, u32) {
+    let out = match Command::new("git")
+        .arg("-C")
+        .arg(cwd)
+        .args(["status", "--porcelain=v2", "--branch", "--untracked-files=no"])
+        .output()
+    {
+        Ok(o) if o.status.success() => o,
+        _ => return (false, 0, 0),
+    };
+
+    let text = String::from_utf8_lossy(&out.stdout);
+    let mut dirty = false;
+    let mut ahead: u32 = 0;
+    let mut behind: u32 = 0;
+
+    for line in text.lines() {
+        if let Some(ab) = line.strip_prefix("# branch.ab ") {
+            // Format: "+N -M"
+            for part in ab.split_whitespace() {
+                if let Some(n) = part.strip_prefix('+') {
+                    ahead = n.parse().unwrap_or(0);
+                } else if let Some(n) = part.strip_prefix('-') {
+                    behind = n.parse().unwrap_or(0);
+                }
+            }
+        } else if !line.starts_with('#') && !line.is_empty() {
+            dirty = true;
+        }
+    }
+
+    (dirty, ahead, behind)
 }
