@@ -100,6 +100,84 @@ pub fn switch_to_pane(target: &str) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Get the pane_id of the pane this process is running in (the popup pane).
+/// Returns None if not inside tmux.
+pub fn current_pane_id() -> Option<String> {
+    Command::new("tmux")
+        .args(["display-message", "-p", "#{pane_id}"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// List all tmux sessions on the current server.
+pub fn list_sessions() -> Vec<TmuxSession> {
+    let out = match Command::new("tmux")
+        .args([
+            "list-sessions",
+            "-F",
+            "#{session_name}\t#{session_windows}\t#{session_attached}",
+        ])
+        .output()
+    {
+        Ok(o) if o.status.success() => o.stdout,
+        _ => return Vec::new(),
+    };
+
+    String::from_utf8_lossy(&out)
+        .lines()
+        .filter_map(|line| {
+            let mut it = line.split('\t');
+            let name = it.next()?.to_string();
+            let window_count: u32 = it.next()?.parse().unwrap_or(0);
+            let attached = it.next()? == "1";
+            Some(TmuxSession {
+                name,
+                window_count,
+                attached,
+            })
+        })
+        .collect()
+}
+
+#[derive(Debug, Clone)]
+pub struct TmuxSession {
+    pub name: String,
+    pub window_count: u32,
+    pub attached: bool,
+}
+
+/// Create a new tmux session (or switch to existing one) for a directory.
+pub fn create_or_switch_session(
+    name: &str,
+    dir: &std::path::Path,
+) -> std::io::Result<()> {
+    let has = Command::new("tmux")
+        .args(["has-session", "-t", name])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false);
+
+    if !has {
+        Command::new("tmux")
+            .args([
+                "new-session",
+                "-d",
+                "-s",
+                name,
+                "-c",
+                &dir.to_string_lossy(),
+            ])
+            .status()?;
+    }
+    Command::new("tmux")
+        .args(["switch-client", "-t", name])
+        .status()?;
+    Ok(())
+}
+
 /// Open a new window in the current tmux session running `claude --resume <id>`.
 pub fn new_window_resume(project_dir: &std::path::Path, session_id: &str) -> std::io::Result<()> {
     Command::new("tmux")

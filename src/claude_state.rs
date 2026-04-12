@@ -28,11 +28,41 @@ impl ClaudeState {
     }
 }
 
-/// Inspect the last ~20 lines of a claude pane and guess its current state.
+/// Try hook-based state file first, fall back to TUI scraping.
 ///
-/// These are brittle string matches against the stock claude TUI. The cost of
-/// a miss is low: we fall back to `Unknown` and render a neutral glyph.
-pub fn detect(tail: &str) -> ClaudeState {
+/// Hook files are written by the claude-code wrapper at
+/// `$XDG_RUNTIME_DIR/claude-agents/<pane_id>.state`. Format is either
+/// `status=WORK|WAIT|IDLE` key-value lines or bare `WORK`/`WAIT`/`IDLE` words.
+pub fn detect_with_hooks(pane_id: &str, tail: &str) -> ClaudeState {
+    if let Some(state) = read_hook_state(pane_id) {
+        return state;
+    }
+    detect(tail)
+}
+
+fn read_hook_state(pane_id: &str) -> Option<ClaudeState> {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").ok()?;
+    let path = std::path::PathBuf::from(runtime_dir)
+        .join("claude-agents")
+        .join(format!("{pane_id}.state"));
+    let content = std::fs::read_to_string(path).ok()?;
+    for line in content.lines() {
+        let word = if let Some(val) = line.strip_prefix("status=") {
+            val.trim()
+        } else {
+            line.trim()
+        };
+        match word {
+            "WORK" => return Some(ClaudeState::Running),
+            "WAIT" => return Some(ClaudeState::WaitingPermission),
+            "IDLE" => return Some(ClaudeState::Idle),
+            _ => {}
+        }
+    }
+    None
+}
+
+fn detect(tail: &str) -> ClaudeState {
     // Running has highest precedence — "esc to interrupt" only appears while
     // the assistant is actively working.
     if tail.contains("esc to interrupt") {

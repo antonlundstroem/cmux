@@ -37,7 +37,7 @@ pub fn snapshot() -> Vec<Group> {
         .into_par_iter()
         .map(|p| {
             let tail = tmux::capture_pane_tail(&p.pane_id);
-            let state = claude_state::detect(&tail);
+            let state = claude_state::detect_with_hooks(&p.pane_id, &tail);
             let git = git::probe(&p.cwd);
             LivePane {
                 pane_id: p.pane_id,
