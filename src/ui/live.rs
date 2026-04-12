@@ -219,11 +219,9 @@ fn render_pane_row(
         Span::raw(" ")
     };
 
-    let indent = if in_group { "   " } else { " " };
+    // Fixed indent so all columns align regardless of grouping.
+    let indent = if in_group { "  " } else { "  " };
 
-    // For git panes: show branch (the group header already provides repo context,
-    // and worktree dirname usually matches branch name — redundant).
-    // For non-git panes: show shortened cwd.
     let label = match &p.git {
         Some(gi) => gi.branch.clone(),
         None => util::shorten_home(&p.cwd),
@@ -258,11 +256,8 @@ fn render_pane_row(
             format!("{} ", p.state.glyph()),
             Style::default().fg(p.state.color()),
         ),
-        Span::styled(rpad(&branch_with_flags, 24), Style::default().fg(Color::Cyan)),
-        Span::styled(
-            p.target.clone(),
-            Style::default().fg(Color::DarkGray),
-        ),
+        Span::styled(rpad(&branch_with_flags, 28), Style::default().fg(Color::Cyan)),
+        Span::styled(rpad(&p.target, 20), Style::default().fg(Color::DarkGray)),
     ];
 
     ListItem::new(Line::from(spans))
