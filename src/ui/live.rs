@@ -250,8 +250,8 @@ fn render_pane_row(
     };
 
     let spans = vec![
-        marker,
         Span::raw(indent),
+        marker,
         Span::styled(
             format!("{} ", p.state.glyph()),
             Style::default().fg(p.state.color()),
