@@ -28,6 +28,13 @@ fn main() -> io::Result<()> {
         return Ok(());
     }
 
+    // `cmux sessions` — jump straight to the Sessions tab
+    if args.get(1).map(String::as_str) == Some("sessions") {
+        let groups = snapshot::snapshot();
+        let current_pane_id = tmux::current_pane_id();
+        return run_app(groups, current_pane_id, Some("sessions"));
+    }
+
     // `cmux new <dir>` — directory picker mode
     if args.get(1).map(String::as_str) == Some("new") {
         let dir = args
@@ -40,9 +47,19 @@ fn main() -> io::Result<()> {
     // Normal mode: agent/session switcher
     let groups = snapshot::snapshot();
     let current_pane_id = tmux::current_pane_id();
+    run_app(groups, current_pane_id, None)
+}
 
+fn run_app(
+    groups: Vec<snapshot::Group>,
+    current_pane_id: Option<String>,
+    initial_tab: Option<&str>,
+) -> io::Result<()> {
     let mut terminal = setup_terminal()?;
     let mut app = App::new(groups, current_pane_id);
+    if let Some(tab) = initial_tab {
+        app.set_initial_tab(tab);
+    }
     let run_result = app.run(&mut terminal);
     restore_terminal(&mut terminal)?;
     run_result?;
