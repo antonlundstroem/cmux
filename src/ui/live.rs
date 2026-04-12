@@ -221,19 +221,14 @@ fn render_pane_row(
 
     let indent = if in_group { "   " } else { " " };
 
-    let (worktree, branch) = match &p.git {
-        Some(gi) => {
-            let wt = gi
-                .worktree_path
-                .file_name()
-                .map(|s| s.to_string_lossy().into_owned())
-                .unwrap_or_default();
-            (wt, gi.branch.clone())
-        }
-        None => (util::shorten_home(&p.cwd), String::new()),
+    // For git panes: show branch (the group header already provides repo context,
+    // and worktree dirname usually matches branch name — redundant).
+    // For non-git panes: show shortened cwd.
+    let label = match &p.git {
+        Some(gi) => gi.branch.clone(),
+        None => util::shorten_home(&p.cwd),
     };
 
-    // Git indicators: * dirty, ⚘ worktree, ↑N↓M ahead/behind
     let mut indicators = String::new();
     if let Some(gi) = &p.git {
         if gi.dirty {
@@ -257,21 +252,20 @@ fn render_pane_row(
             format!("{} ", p.state.glyph()),
             Style::default().fg(p.state.color()),
         ),
-        Span::raw(rpad(&worktree, 24)),
-        Span::styled(rpad(&branch, 16), Style::default().fg(Color::Cyan)),
+        Span::styled(rpad(&label, 20), Style::default().fg(Color::Cyan)),
     ];
 
     if !indicators.is_empty() {
         spans.push(Span::styled(
-            rpad(&indicators, 8),
+            rpad(&indicators, 6),
             Style::default().fg(Color::Yellow),
         ));
     } else {
-        spans.push(Span::raw(rpad("", 8)));
+        spans.push(Span::raw(rpad("", 6)));
     }
 
     spans.push(Span::styled(
-        rpad(&p.target, 16),
+        p.target.clone(),
         Style::default().fg(Color::DarkGray),
     ));
 
