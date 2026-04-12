@@ -71,10 +71,24 @@ pub fn capture_pane_tail(pane_id: &str) -> String {
 }
 
 /// Grab the entire current visible area of a pane (no scrollback), preserving
-/// ANSI escape sequences (`-e`) so the preview can render colors.
+/// ANSI escape sequences (`-e`) so the preview can render colors. Falls back
+/// to plain capture if the ANSI capture fails or returns empty.
 pub fn capture_pane_visible(pane_id: &str) -> String {
-    match Command::new("tmux")
+    // Try with ANSI escapes first.
+    if let Ok(o) = Command::new("tmux")
         .args(["capture-pane", "-p", "-e", "-t", pane_id])
+        .output()
+    {
+        if o.status.success() {
+            let s = String::from_utf8_lossy(&o.stdout).into_owned();
+            if !s.trim().is_empty() {
+                return s;
+            }
+        }
+    }
+    // Fallback: plain capture without escape sequences.
+    match Command::new("tmux")
+        .args(["capture-pane", "-p", "-t", pane_id])
         .output()
     {
         Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).into_owned(),
