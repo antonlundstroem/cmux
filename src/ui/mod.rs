@@ -53,6 +53,8 @@ pub struct App {
 impl App {
     pub fn new(groups: Vec<Group>, current_pane_id: Option<String>) -> Self {
         let live = LiveView::new(&groups);
+        let mut sessions = SessionsView::new();
+        sessions.ensure_loaded();
         let mut app = Self {
             groups,
             current_pane_id,
@@ -60,7 +62,7 @@ impl App {
             query: String::new(),
             filter: Filter::new(),
             live,
-            sessions: SessionsView::new(),
+            sessions,
             resume: ResumeView::new(),
             preview: Preview::new(),
             exit: None,
