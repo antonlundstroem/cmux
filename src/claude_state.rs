@@ -1,6 +1,28 @@
 use ratatui::style::Color;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AgentKind {
+    Claude,
+    Cursor,
+}
+
+impl AgentKind {
+    pub fn badge(self) -> &'static str {
+        match self {
+            AgentKind::Claude => "[c] ",
+            AgentKind::Cursor => "[a] ",
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            AgentKind::Claude => "claude",
+            AgentKind::Cursor => "cursor",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClaudeState {
     Idle,
     Running,
@@ -33,11 +55,16 @@ impl ClaudeState {
 /// Hook files are written by the claude-code wrapper at
 /// `$XDG_RUNTIME_DIR/claude-agents/<pane_id>.state`. Format is either
 /// `status=WORK|WAIT|IDLE` key-value lines or bare `WORK`/`WAIT`/`IDLE` words.
-pub fn detect_with_hooks(pane_id: &str, tail: &str) -> ClaudeState {
-    if let Some(state) = read_hook_state(pane_id) {
-        return state;
+pub fn detect_with_hooks(pane_id: &str, tail: &str, kind: AgentKind) -> ClaudeState {
+    match kind {
+        AgentKind::Claude => {
+            if let Some(state) = read_hook_state(pane_id) {
+                return state;
+            }
+            detect(tail)
+        }
+        AgentKind::Cursor => detect_cursor(tail),
     }
-    detect(tail)
 }
 
 fn read_hook_state(pane_id: &str) -> Option<ClaudeState> {
@@ -79,6 +106,17 @@ fn detect(tail: &str) -> ClaudeState {
     ClaudeState::Unknown
 }
 
+/// Cursor Agent TUI scraping. Patterns derived from observed cursor-agent output.
+fn detect_cursor(tail: &str) -> ClaudeState {
+    if tail.contains("Generating") {
+        return ClaudeState::Running;
+    }
+    if tail.contains("/ commands") {
+        return ClaudeState::Idle;
+    }
+    ClaudeState::Unknown
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -106,5 +144,22 @@ mod tests {
     #[test]
     fn empty_is_unknown() {
         assert_eq!(detect(""), ClaudeState::Unknown);
+    }
+
+    #[test]
+    fn cursor_generating_is_running() {
+        let tail = "Generating...";
+        assert_eq!(detect_cursor(tail), ClaudeState::Running);
+    }
+
+    #[test]
+    fn cursor_idle_detected() {
+        let tail = "  Codex 5.3\n  / commands · @ files · ! shell";
+        assert_eq!(detect_cursor(tail), ClaudeState::Idle);
+    }
+
+    #[test]
+    fn cursor_empty_is_unknown() {
+        assert_eq!(detect_cursor(""), ClaudeState::Unknown);
     }
 }
