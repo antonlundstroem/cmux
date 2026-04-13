@@ -195,20 +195,36 @@ fn scan_dirs(root: &Path, max_depth: u32) -> Vec<PathBuf> {
     result
 }
 
+/// Returns true if `dir` looks like a bare git repo (has HEAD file + objects/ + refs/).
+fn is_bare_git_repo(dir: &Path) -> bool {
+    dir.join("HEAD").is_file() && dir.join("objects").is_dir() && dir.join("refs").is_dir()
+}
+
+/// Git-internal directory names that live inside a bare repo root.
+const BARE_REPO_INTERNALS: &[&str] = &[
+    "hooks", "info", "objects", "refs", "branches", "logs", "modules",
+];
+
 fn scan_recursive(dir: &Path, depth: u32, result: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
+    let bare = is_bare_git_repo(dir);
     for entry in entries.flatten() {
         let path = entry.path();
         if !path.is_dir() {
             continue;
         }
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
         // Skip hidden directories.
-        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-            if name.starts_with('.') {
-                continue;
-            }
+        if name.starts_with('.') {
+            continue;
+        }
+        // Skip git-internal directories inside bare repos.
+        if bare && BARE_REPO_INTERNALS.contains(&name) {
+            continue;
         }
         result.push(path.clone());
         if depth > 1 {
