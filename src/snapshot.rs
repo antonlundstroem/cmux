@@ -1,10 +1,10 @@
-//! Top-level snapshot: build the list of live claude panes, enriched with
+//! Top-level snapshot: build the list of live agent panes, enriched with
 //! git + state info, grouped by repo.
 
 use rayon::prelude::*;
 use std::path::PathBuf;
 
-use crate::claude_state::{self, ClaudeState};
+use crate::claude_state::{self, AgentKind, ClaudeState};
 use crate::git::{self, GitInfo};
 use crate::tmux::{self, RawPane};
 
@@ -16,6 +16,7 @@ pub struct LivePane {
     pub git: Option<GitInfo>,
     pub state: ClaudeState,
     pub idle_secs: u64,
+    pub agent_kind: AgentKind,
 }
 
 /// One repo group + the panes inside it. `repo_name` is `None` for panes that
@@ -28,16 +29,19 @@ pub struct Group {
 
 pub fn snapshot() -> Vec<Group> {
     let raw = tmux::list_panes();
-    let claude_panes: Vec<RawPane> = raw.into_iter().filter(is_claude).collect();
+    let agent_panes: Vec<(RawPane, AgentKind)> = raw
+        .into_iter()
+        .filter_map(|p| agent_kind_of(&p).map(|k| (p, k)))
+        .collect();
 
     // Per-pane enrichment runs in parallel: each pane is an independent
     // capture-pane + git rev-parse pair. Shell-outs dominate latency so
     // parallelism buys real wall-clock time.
-    let enriched: Vec<LivePane> = claude_panes
+    let enriched: Vec<LivePane> = agent_panes
         .into_par_iter()
-        .map(|p| {
+        .map(|(p, kind)| {
             let tail = tmux::capture_pane_tail(&p.pane_id);
-            let state = claude_state::detect_with_hooks(&p.pane_id, &tail);
+            let state = claude_state::detect_with_hooks(&p.pane_id, &tail, kind);
             let git = git::probe(&p.cwd);
             LivePane {
                 pane_id: p.pane_id,
@@ -46,6 +50,7 @@ pub fn snapshot() -> Vec<Group> {
                 git,
                 state,
                 idle_secs: p.activity_secs,
+                agent_kind: kind,
             }
         })
         .collect();
@@ -53,10 +58,16 @@ pub fn snapshot() -> Vec<Group> {
     group_by_repo(enriched)
 }
 
-fn is_claude(p: &RawPane) -> bool {
-    // The foreground process name tmux reports. A shell wrapping claude would
-    // show up as "bash" — we intentionally don't handle that case in v1.
-    p.current_command == "claude"
+fn agent_kind_of(p: &RawPane) -> Option<AgentKind> {
+    // The foreground process name tmux reports. A shell wrapping an agent would
+    // show up as "bash" — we intentionally don't handle that case.
+    if p.current_command == "claude" {
+        Some(AgentKind::Claude)
+    } else if p.current_command.starts_with("cursor") {
+        Some(AgentKind::Cursor)
+    } else {
+        None
+    }
 }
 
 fn group_by_repo(panes: Vec<LivePane>) -> Vec<Group> {

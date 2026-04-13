@@ -197,8 +197,9 @@ fn build_haystacks(groups: &[Group]) -> (Vec<String>, Vec<(usize, usize)>) {
                 .and_then(|g| g.worktree_path.file_name())
                 .map(|s| s.to_string_lossy().into_owned())
                 .unwrap_or_default();
+            let agent = p.agent_kind.name();
             haystacks.push(format!(
-                "{repo} {worktree} {branch} {} {}",
+                "{agent} {repo} {worktree} {branch} {} {}",
                 p.cwd.display(),
                 p.target
             ));
@@ -252,6 +253,7 @@ fn render_pane_row(
     let spans = vec![
         Span::raw(indent),
         marker,
+        Span::styled(p.agent_kind.badge(), Style::default().fg(Color::DarkGray)),
         Span::styled(
             format!("{} ", p.state.glyph()),
             Style::default().fg(p.state.color()),
