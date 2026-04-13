@@ -105,9 +105,7 @@ impl LiveView {
             if visible.is_empty() {
                 continue;
             }
-            if g.repo_name.is_some() {
-                self.rows.push(RowKind::Header);
-            }
+            self.rows.push(RowKind::Header);
             for pi in visible {
                 self.rows.push(RowKind::Pane {
                     group_idx: gi,
@@ -139,7 +137,7 @@ impl LiveView {
                     let g = group_idx.and_then(|i| groups.get(i));
                     let name = g
                         .and_then(|g| g.repo_name.as_deref())
-                        .unwrap_or("?");
+                        .unwrap_or("other");
                     let count = g.map(|g| g.panes.len()).unwrap_or(0);
                     ListItem::new(Line::from(vec![
                         Span::styled("▾ ", Style::default().fg(Color::DarkGray)),
@@ -230,6 +228,9 @@ fn render_pane_row(
 
     let mut indicators = String::new();
     if let Some(gi) = &p.git {
+        if gi.is_bare {
+            indicators.push('⊙');
+        }
         if gi.dirty {
             indicators.push('*');
         }

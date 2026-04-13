@@ -13,6 +13,8 @@ pub struct GitInfo {
     pub repo_name: String,
     /// Whether this pane is in a linked worktree (not the main checkout).
     pub is_worktree: bool,
+    /// Whether this is a bare repository (no working tree).
+    pub is_bare: bool,
     /// Uncommitted changes present.
     pub dirty: bool,
     /// Commits ahead of upstream.
@@ -23,15 +25,11 @@ pub struct GitInfo {
 
 pub fn probe(cwd: &Path) -> Option<GitInfo> {
     // Grouping info — must succeed for us to treat this as a git repo.
+    // --show-toplevel is run separately because it fails on bare repos.
     let out = Command::new("git")
         .arg("-C")
         .arg(cwd)
-        .args([
-            "rev-parse",
-            "--git-dir",
-            "--git-common-dir",
-            "--show-toplevel",
-        ])
+        .args(["rev-parse", "--git-dir", "--git-common-dir"])
         .output()
         .ok()?;
     if !out.status.success() {
@@ -41,7 +39,21 @@ pub fn probe(cwd: &Path) -> Option<GitInfo> {
     let mut lines = text.lines();
     let git_dir_raw = lines.next()?.to_string();
     let common_raw = lines.next()?.to_string();
-    let toplevel = lines.next()?.to_string();
+
+    // --show-toplevel fails on bare repos; fall back to cwd.
+    let toplevel_out = Command::new("git")
+        .arg("-C")
+        .arg(cwd)
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| {
+            let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            if s.is_empty() { None } else { Some(s) }
+        });
+    let is_bare = toplevel_out.is_none();
+    let toplevel = toplevel_out.unwrap_or_else(|| cwd.to_string_lossy().into_owned());
 
     // Branch name — best-effort.
     let branch = Command::new("git")
@@ -97,6 +109,7 @@ pub fn probe(cwd: &Path) -> Option<GitInfo> {
         },
         repo_name,
         is_worktree,
+        is_bare,
         dirty,
         ahead,
         behind,
