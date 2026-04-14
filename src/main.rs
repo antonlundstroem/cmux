@@ -35,13 +35,14 @@ fn main() -> io::Result<()> {
         return run_app(groups, current_pane_id, Some("sessions"));
     }
 
-    // `cmux new <dir>` — directory picker mode
+    // `cmux new [dir...]` — directory picker mode, one tab per root
     if args.get(1).map(String::as_str) == Some("new") {
-        let dir = args
-            .get(2)
+        let roots: Vec<PathBuf> = args
+            .iter()
+            .skip(2)
             .map(|s| PathBuf::from(shellexpand(s)))
-            .unwrap_or_else(|| PathBuf::from("."));
-        return run_picker(&dir);
+            .collect();
+        return run_picker(&roots);
     }
 
     // Normal mode: agent/session switcher
@@ -70,9 +71,9 @@ fn run_app(
     Ok(())
 }
 
-fn run_picker(root: &std::path::Path) -> io::Result<()> {
+fn run_picker(roots: &[PathBuf]) -> io::Result<()> {
     let mut terminal = setup_terminal()?;
-    let mut picker = PickerApp::new(root);
+    let mut picker = PickerApp::new(roots);
     let run_result = picker.run(&mut terminal);
     restore_terminal(&mut terminal)?;
     run_result?;
