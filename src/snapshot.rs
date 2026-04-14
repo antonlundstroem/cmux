@@ -61,7 +61,10 @@ pub fn snapshot() -> Vec<Group> {
 fn agent_kind_of(p: &RawPane) -> Option<AgentKind> {
     // The foreground process name tmux reports. A shell wrapping an agent would
     // show up as "bash" — we intentionally don't handle that case.
-    if p.current_command == "claude" {
+    //
+    // NixOS wraps claude in a shell script that execs `.claude-unwrapped`, so the
+    // process name leaks through as that. Match both forms.
+    if p.current_command == "claude" || p.current_command == ".claude-unwrapped" {
         Some(AgentKind::Claude)
     } else if p.current_command.starts_with("cursor") {
         Some(AgentKind::Cursor)
