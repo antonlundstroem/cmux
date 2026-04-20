@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 /// One row from `tmux list-panes -a` before enrichment.
 #[derive(Debug, Clone)]
@@ -170,6 +170,7 @@ pub fn create_or_switch_session(
 ) -> std::io::Result<()> {
     let has = Command::new("tmux")
         .args(["has-session", "-t", name])
+        .stderr(Stdio::null())
         .status()
         .map(|s| s.success())
         .unwrap_or(false);
